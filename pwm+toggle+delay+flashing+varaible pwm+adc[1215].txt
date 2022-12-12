@@ -1,0 +1,59 @@
+#include "driverlib.h"
+#include "device.h"
+#include "board.h"
+
+float32_t i;
+
+EPWM_SignalParams pwmSignal =
+            {15000, 0.5f, 0.1f, false, DEVICE_SYSCLK_FREQ,
+            EPWM_COUNTER_MODE_UP_DOWN, EPWM_CLOCK_DIVIDER_1,
+            EPWM_HSCLOCK_DIVIDER_1};
+void pwm()
+{
+    SysCtl_disablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+    EPWM_configureSignal(myEPWM1_BASE, &pwmSignal);
+    EPWM_disablePhaseShiftLoad(myEPWM1_BASE);
+    EPWM_setPhaseShift(myEPWM1_BASE, 0U);
+    EPWM_enableSyncOutPulseSource(myEPWM1_BASE, EPWM_SYNC_OUT_PULSE_ON_CNTR_ZERO);
+    SysCtl_enablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+    Interrupt_enable(INT_EPWM1);
+    EINT;
+    ERTM;
+
+}
+
+void main(void)
+{
+    Device_init();
+    Device_initGPIO();
+    Interrupt_initModule();
+    Interrupt_initVectorTable();
+    Board_init();
+    DEVICE_DELAY_US(1000000);
+    while(1)
+    {
+
+        pwm();
+        pwmSignal.dutyValB += 0.1f;
+        GPIO_writePin(33U, 1);
+        if(pwmSignal.dutyValB >= 0.8f)
+        {
+             for(i =pwmSignal.dutyValB ; i > 0.1f ; i -= 0.1 )
+
+                 {
+                       pwm();
+                      pwmSignal.dutyValB -= 0.1f;
+                      DEVICE_DELAY_US(1000000);
+
+                 }
+         }
+         else
+         {
+             pwmSignal.dutyValB =  pwmSignal.dutyValB;
+         }
+         DEVICE_DELAY_US(1000000);
+    }
+}
+
+
+

@@ -1,0 +1,154 @@
+
+#include "driverlib.h"
+#include "device.h"
+#include "board.h"
+#define RESULTS_BUFFER_SIZE     3 //buffer for storing conversion results
+                                //(size must be multiple of 16)
+#define factor 0.80566
+
+uint16_t adcAResults[RESULTS_BUFFER_SIZE];
+uint16_t resultsIndex;
+
+
+
+void main(void)
+     {
+    //
+    // Initialize device clock and peripherals
+    //
+    Device_init();
+
+    //
+    // Disable pin locks and enable internal pullups.
+    //
+    Device_initGPIO();
+    GPIO_setPadConfig(33, GPIO_PIN_TYPE_PULLUP);
+    GPIO_setDirectionMode(33, GPIO_DIR_MODE_OUT);
+    
+    GPIO_setPadConfig(0, GPIO_PIN_TYPE_PULLUP);
+    GPIO_setDirectionMode(0, GPIO_DIR_MODE_OUT);
+
+    //
+    // Initialize PIE and clear PIE registers. Disables CPU interrupts.
+    //
+    Interrupt_initModule();
+
+    //
+    // Initialize the PIE vector table with pointers to the shell Interrupt
+    // Service Routines (ISR).
+    //
+    Interrupt_initVectorTable();
+
+    //
+    // Board Initialization
+    // - Configure the ADC and power it up
+    // - Setup the ADC for continuous conversions on channels
+    //
+    Board_init();
+
+    //
+    // Initialize results buffer
+    //
+    for(resultsIndex = 0; resultsIndex < RESULTS_BUFFER_SIZE; resultsIndex++)
+    {
+        adcAResults[resultsIndex] = 0;
+    }
+    resultsIndex = 0;
+
+    //
+    // Enable global Interrupts and higher priority real-time debug events:
+    //
+    EINT;  // Enable Global interrupt INTM
+    ERTM;  // Enable Global realtime interrupt DBGM
+
+    GPIO_writePin(0 ,1 );
+    DEVICE_DELAY_US(4000000);
+    GPIO_writePin(33 ,1);
+    DEVICE_DELAY_US(1000000);
+        GPIO_writePin(0, 0);
+    
+
+    //
+      // Take conversions indefinitely in loop
+      //
+    while(1)
+    {
+        //
+        // Enable ADC interrupts
+        //
+        ADC_setupSOC(myADC0_BASE, ADC_SOC_NUMBER2 ,   ADC_TRIGGER_SW_ONLY , ADC_CH_ADCIN2 ,75  );
+        ADC_setVREF(myADC0_BASE,  ADC_REFERENCE_EXTERNAL,  ADC_REFERENCE_3_3V); // set INTERNAL if you want internal reference
+        ADC_setOffsetTrimAll(ADC_REFERENCE_EXTERNAL,ADC_REFERENCE_3_3V);// set INTTERNAL if you want internal reference
+
+        /*******NOTE*****/
+       //cut of the external reference (VDDA) if you want use internal reference in your code.
+
+        DEVICE_DELAY_US(5000);
+
+        ADC_enableInterrupt(myADC0_BASE, ADC_INT_NUMBER1);
+        ADC_enableInterrupt(myADC0_BASE, ADC_INT_NUMBER2);
+        ADC_enableInterrupt(myADC0_BASE, ADC_INT_NUMBER3);
+        ADC_enableInterrupt(myADC0_BASE, ADC_INT_NUMBER4);
+
+        //
+        // Clear all interrupts flags(INT1-4)
+        //
+        HWREGH(myADC0_BASE + ADC_O_INTFLGCLR) = 0x000F;
+
+        //
+        // Initialize results index
+        //
+        resultsIndex = 0;
+        //
+        // Software force start SOC0 to SOC7
+        //
+        HWREGH(myADC0_BASE + ADC_O_SOCFRC1) = 0x00FF;
+
+        //
+        // Keep taking samples until the results buffer is full
+        //
+
+        while(resultsIndex < RESULTS_BUFFER_SIZE)
+        {
+            //
+            // Wait for first set of 8 conversions to complete
+            //
+            while(false == ADC_getInterruptStatus(myADC0_BASE, ADC_INT_NUMBER3));
+
+            //
+            // Clear the interrupt flag
+            //
+            ADC_clearInterruptStatus(myADC0_BASE, ADC_INT_NUMBER3);
+            
+
+            adcAResults[resultsIndex++] = (ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER0) * factor )  ; ///A0 pin number 9 on te control card
+
+
+
+            adcAResults[resultsIndex++] = (ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER1) * factor )  ; //A1  pin number 2 on the control card
+
+
+
+
+            adcAResults[resultsIndex++] = (ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER2) * factor  )  ;  //A2  pin number 1 on the control card
+
+
+
+        //
+        // Disable all ADCINT flags to stop sampling
+        //
+        ADC_disableInterrupt(myADC0_BASE, ADC_INT_NUMBER1);
+        ADC_disableInterrupt(myADC0_BASE, ADC_INT_NUMBER2);
+        ADC_disableInterrupt(myADC0_BASE, ADC_INT_NUMBER3);
+        ADC_disableInterrupt(myADC0_BASE, ADC_INT_NUMBER4);
+
+
+
+
+        //asm("   ESTOP0"); //software breakpoint , hit run again to get updated conversions
+    }
+
+
+}
+}
+

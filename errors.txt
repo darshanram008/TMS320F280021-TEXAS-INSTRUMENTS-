@@ -1,0 +1,3 @@
+1.  program will not fit into available memory, or the section contains a call site that requires a trampoline that can't be generated for this section. 
+2. Not able to figure out the stored value in myADC0Result2 in the statement  "myADC0Result2 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER2); " for the ADC code (note: myADC0Result2 is initialised as uinnt16_t)
+

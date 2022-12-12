@@ -1,0 +1,216 @@
+//#############################################################################
+//
+// FILE:   adc_ex1_soc_software.c
+//
+// TITLE:  ADC Software Triggering
+//
+//! \addtogroup driver_example_list
+//! <h1>ADC Software Triggering</h1>
+//!
+//! This example converts some voltages on ADCA and ADCC based on a software
+//! trigger.
+//!
+//! The ADCC will not convert until ADCA is complete, so the ADCs will not run
+//! asynchronously. However, this is much less efficient than allowing the ADCs
+//! to convert synchronously in parallel (for example, by using an ePWM 
+//! trigger).
+//!
+//! \b External \b Connections \n
+//!  - A0, A1, C2, and C3 should be connected to signals to convert
+//!
+//! \b Watch \b Variables \n
+//! - \b myADC0Result0 - Digital representation of the voltage on pin A0
+//! - \b myADC0Result1 - Digital representation of the voltage on pin A1
+//! - \b myADC1Result0 - Digital representation of the voltage on pin C2
+//! - \b myADC1Result1 - Digital representation of the voltage on pin C3
+//!
+//
+//#############################################################################
+//
+//
+// $Copyright:
+// Copyright (C) 2022 Texas Instruments Incorporated - http://www.ti.com/
+//
+// Redistribution and use in source and binary forms, with or without 
+// modification, are permitted provided that the following conditions 
+// are met:
+// 
+//   Redistributions of source code must retain the above copyright 
+//   notice, this list of conditions and the following disclaimer.
+// 
+//   Redistributions in binary form must reproduce the above copyright
+//   notice, this list of conditions and the following disclaimer in the 
+//   documentation and/or other materials provided with the   
+//   distribution.
+// 
+//   Neither the name of Texas Instruments Incorporated nor the names of
+//   its contributors may be used to endorse or promote products derived
+//   from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// $
+//#############################################################################
+//
+
+//
+// Included Files
+//
+#include "driverlib.h"
+#include "device.h"
+#include "board.h"
+
+
+
+
+
+
+
+
+//
+// Globals
+//
+
+uint16_t myADC0Result0;//A0
+uint16_t myADC0Result1;//A1
+uint16_t myADC0Result2;//A2
+//uint16_t myADC1Result1;//C3
+EPWM_SignalParams pwmSignal =
+            {10000, 0.5f, 0.7f, false, DEVICE_SYSCLK_FREQ,
+            EPWM_COUNTER_MODE_UP_DOWN, EPWM_CLOCK_DIVIDER_1,
+            EPWM_HSCLOCK_DIVIDER_1};
+void pwm()
+{
+    SysCtl_disablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+    EPWM_configureSignal(EPWM1_BASE, &pwmSignal);
+    EPWM_disablePhaseShiftLoad(EPWM1_BASE);
+        EPWM_setPhaseShift(EPWM1_BASE, 0U);
+        EPWM_enableSyncOutPulseSource(EPWM1_BASE, EPWM_SYNC_OUT_PULSE_ON_CNTR_ZERO);
+        SysCtl_enablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+        Interrupt_enable(INT_EPWM1);
+
+
+}
+
+void main(void)
+{
+    //
+    // Initialize device clock and peripherals
+    //
+    Device_init();
+
+    //
+    // Disable pin locks and enable internal pullups.
+    //
+    Device_initGPIO();
+    GPIO_setPadConfig(33, GPIO_PIN_TYPE_PULLUP);
+       GPIO_setDirectionMode(33, GPIO_DIR_MODE_OUT);
+
+    //
+    // Initialize PIE and clear PIE registers. Disables CPU interrupts.
+    //
+    Interrupt_initModule();
+
+    //
+    // Initialize the PIE vector table with pointers to the shell Interrupt
+    // Service Routines (ISR).
+    //
+    Interrupt_initVectorTable();
+
+    //
+    // Set up ADCs, initializing the SOCs to be triggered by software
+    //
+    Board_init();
+
+    //
+    // Enable Global Interrupt (INTM) and realtime interrupt (DBGM)
+    //
+
+
+
+
+    EINT;
+    ERTM;
+
+    while(1)
+    {
+        
+        ADC_setupSOC(myADC0_BASE, ADC_SOC_NUMBER2 ,   ADC_TRIGGER_SW_ONLY , ADC_CH_ADCIN2 ,75  );
+        //
+        // Convert, wait for completion, and store results
+        //
+        EALLOW;
+        ADC_forceMultipleSOC(myADC0_BASE, (ADC_FORCE_SOC0 | ADC_FORCE_SOC1 | ADC_FORCE_SOC2 )); //trigger pin A0,  A1 , A2
+
+        //
+        // Wait for ADCA to complete, then acknowledge flag
+        //
+        while(ADC_getInterruptStatus(myADC0_BASE, ADC_INT_NUMBER1) == false)
+        {
+
+        }
+        ADC_clearInterruptStatus(myADC0_BASE, ADC_INT_NUMBER1);
+        EDIS;
+
+
+
+        //ADC_forceMultipleSOC(myADC1_BASE, (ADC_FORCE_SOC0 | ADC_FORCE_SOC1));
+        //
+        // Wait for ADCC to complete, then acknowledge flag
+        //
+        /*while(ADC_getInterruptStatus(myADC1_BASE, ADC_INT_NUMBER1) == false)
+        {
+        }
+        ADC_clearInterruptStatus(myADC1_BASE, ADC_INT_NUMBER1);*/
+
+        //
+        // Store results
+        //
+        myADC0Result0 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER0);
+        myADC0Result1 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER1);
+        myADC0Result2 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER2); //BASE ADDRESS
+
+       // myADC1Result0 = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER0);
+       // myADC1Result1 = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER1);
+        if(myADC0Result2 > 1600)
+
+        {
+            GPIO_writePin(33U, 1);
+            pwmSignal.dutyValB += 0.1f;
+            pwm();
+            DEVICE_DELAY_US(1000000);
+
+        }
+        else if (myADC0Result2 == 1600)
+        {
+            pwmSignal.dutyValB =  pwmSignal.dutyValB;
+                       pwm();
+                       DEVICE_DELAY_US(1000000);
+
+        }
+        else
+        {
+            GPIO_writePin(DEVICE_GPIO_PIN_LED1, 0);
+            pwmSignal.dutyValB -= 0.1f;
+            pwm();
+            DEVICE_DELAY_US(1000000);
+        }
+        //
+        // Software breakpoint. At this point, conversion results are stored in
+        // myADC0Result0, myADC0Result1, myADC1Result0, and myADC1Result1.
+        //
+        // Hit run again to get updated conversions.
+        //
+
+    }
+}
+
